@@ -49,7 +49,7 @@ workflow RECALIBRATE {
     samtools_stats = Channel.empty()
 
     if (!skip_samtools) {
-        SAMTOOLS_STATS(bam_recalibrated_index, [])
+        SAMTOOLS_STATS(bam_recalibrated_index, fasta.map{ fasta -> [ [ id:fasta.baseName ], fasta ])
         samtools_stats = SAMTOOLS_STATS.out.stats
         ch_versions = ch_versions.mix(SAMTOOLS_STATS.out.versions.first())
     }

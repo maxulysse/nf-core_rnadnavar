@@ -13,7 +13,7 @@ include { BAM_TO_CRAM as BAM_TO_CRAM_SNCR                      } from '../nf-cor
 include { CRAM_QC                                              } from '../nf-core/cram_qc'
 include { BAM_BASERECALIBRATOR                                 } from '../nf-core/gatk4/prepare_recalibration/main'
 include { PREPARE_RECALIBRATION_CSV                            } from '../local/prepare_recalibration_csv'
-include { RECALIBRATE                                          } from '../nf-core/gatk4/recalibrate/main'
+include { BAM_APPLYBQSR                                        } from '../nf-core/gatk4/recalibrate/main'
 include { RECALIBRATE_CSV                                      } from '../local/recalibrate_csv'
 
 workflow GATK_PREPROCESSING {
@@ -102,7 +102,8 @@ workflow GATK_PREPROCESSING {
                         fasta,
                         fasta_fai,
                         intervals_for_preprocessing)
-                    ch_cram_markduplicates = MARKDUPLICATES.out.cram
+//                    ch_cram_markduplicates = MARKDUPLICATES.out.cram
+                    ch_bam_markduplicates  = MARKDUPLICATES.out.bam
                     // Gather QC reports
                     ch_reports  = ch_reports.mix(MARKDUPLICATES.out.reports.collect{ meta, report -> report })
                     // Gather used softwares versions
@@ -111,43 +112,32 @@ workflow GATK_PREPROCESSING {
                 // ch_md_cram_for_restart contains either:
                 // - crams from markduplicates
                 // - crams converted from bam mapped when skipping markduplicates
-                ch_md_cram_for_restart = Channel.empty()
-                                                .mix(
-                                                    ch_cram_markduplicates,
-                                                    ch_cram_no_markduplicates_restart)
-                                                .map {
-                                                    meta, cram, crai ->
-                                                    //Make sure correct data types are carried through
-                                                    [[
-                                                        data_type:  "cram",
-                                                        id:         meta.id,
-                                                        patient:    meta.patient,
-                                                        sample:     meta.sample,
-                                                        status:     meta.status,
-                                                        lane:       meta.lane
-                                                        ],
-                                                    cram, crai]
-                                                    }
+//                ch_md_cram_for_restart = ch_cram_markduplicates
+//                                         // Make sure correct data types are carried through
+//                                         .map{ meta, cram, crai -> [ meta + [data_type: "cram"], cram, crai ] }
+                ch_md_bam_for_restart = ch_bam_markduplicates
+                                         // Make sure correct data types are carried through
+                                         .map{ meta, bam, bai -> [ meta + [data_type: "bam"], bam, bai ] }
                 // CSV should be written for the file actually out, either CRAM or BAM
                 // Create CSV to restart from this step
                 if (!(skip_tools && skip_tools.split(',').contains('markduplicates'))) {
-                    MARKDUPLICATES_CSV(ch_md_cram_for_restart)
+                    MARKDUPLICATES_CSV(ch_md_bam_for_restart)
                 }
             }
             // STEP 1b: SplitNCigarReads for RNA
             if (step in ['mapping', 'markduplicates', 'splitncigar']) {
                 if (step == 'splitncigar') {
-                ch_md_cram_for_restart = ch_bam_mapped
+                ch_md_bam_for_restart = ch_bam_mapped
                 }
 
                 // Separate RNA from DNA to do SPLITNCIGARREADS from GATK
-                ch_md_cram_for_restart.branch{
+                ch_md_bam_for_restart.branch{
                     dna: it[0].status < 2
                     rna: it[0].status == 2
                 }.set{ch_md_for_splitncigar}
                 // RNA samples only
                 ch_for_splitncigar = ch_md_for_splitncigar.rna
-                ch_md_cram_dna = ch_md_for_splitncigar.dna
+                ch_md_bam_dna = ch_md_for_splitncigar.dna
                 // If CRAM files, convert to BAM, because the tool only runs on BAM files.
                 ch_for_splitncigar.branch{
                         bam:  it[0].data_type == "bam"
@@ -165,10 +155,10 @@ workflow GATK_PREPROCESSING {
                 ch_splitncigar_bam_bai  = SPLITNCIGAR.out.bam_bai
                 ch_versions             = ch_versions.mix(SPLITNCIGAR.out.versions)
                 // empty channel as BAM_TO_CRAM needs it as input
-                ch_input_cram_indexed     = Channel.empty()
-                // SPLINCIGAR BAM to CRAM
+                ch_bam_to_recalibrate = ch_md_bam_dna.mix(ch_splitncigar_bam_bai)
+//                // SPLINCIGAR BAM to CRAM
                 BAM_TO_CRAM_SNCR(
-                    ch_splitncigar_bam_bai,
+                    ch_bam_to_recalibrate,
                     ch_input_cram_indexed,
                     fasta,
                     fasta_fai,
@@ -181,10 +171,8 @@ workflow GATK_PREPROCESSING {
                 ch_versions = ch_versions.mix(BAM_TO_CRAM_SNCR.out.versions)
                 // join again DNA and RNA to continue pre-processing
                 ch_cram_for_recalibration = Channel.empty()
-                ch_splitncigar_cram_for_restart = ch_cram_for_recalibration.mix(
-                                            ch_md_cram_dna,
-                                            ch_cram_splitncigar)
-                ch_cram_for_recal = ch_splitncigar_cram_for_restart.map{ meta, cram, crai ->
+
+                ch_cram_for_recal = ch_cram_splitncigar.map{ meta, cram, crai ->
                             [[
                                 data_type:  "cram",
                                 id:         meta.id,
@@ -272,15 +260,15 @@ workflow GATK_PREPROCESSING {
                 // RECALIBRATION
     //            ch_cram_applybqsr.dump(tag:"[STEP2_GATKPREPROCESSING] PREPARE_RECALIBRATION")
 
-                RECALIBRATE(
+                BAM_APPLYBQSR(
                     ch_cram_applybqsr,
                     dict,
                     fasta,
                     fasta_fai,
                     intervals)
 
-                ch_cram_variant_calling = RECALIBRATE.out.cram
-                ch_versions = ch_versions.mix(RECALIBRATE.out.versions)
+                ch_cram_variant_calling = BAM_APPLYBQSR.out.cram
+                ch_versions = ch_versions.mix(BAM_APPLYBQSR.out.versions)
 
                 // QC for resulting CRAM(s)
                 CRAM_QC(
@@ -307,8 +295,8 @@ workflow GATK_PREPROCESSING {
                     // ch_cram_variant_calling contains either:
                     // - input bams converted to crams, if started from step recal + skip BQSR
                     // - input crams if started from step recal + skip BQSR
-                    ch_cram_variant_calling = Channel.empty().mix(SAMTOOLS_BAMTOCRAM.out.alignment_index,
-                                                                ch_convert.cram.map{ meta, cram, crai, table -> [meta, cram, crai]})
+                    ch_cram_variant_calling = SAMTOOLS_BAMTOCRAM.out.alignment_index
+                                                .mix(ch_convert.cram.map{ meta, cram, crai, table -> [meta, cram, crai]})
                 } else {
                     // ch_cram_variant_calling contains either:
                     // - crams from markduplicates = ch_cram_for_prepare_recalibration if skip BQSR but not started from step recalibration

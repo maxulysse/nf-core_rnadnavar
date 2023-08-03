@@ -29,10 +29,10 @@ workflow BAM_TO_CRAM {
 
         cram_indexed = Channel.empty().mix(cram_indexed,SAMTOOLS_BAMTOCRAM.out.alignment_index)
 
-        // Reports on cram
-        SAMTOOLS_STATS_CRAM(cram_indexed, fasta)
-        // TODO: cram_indexed can accept bed file at the end - not implemented yet
-        MOSDEPTH(cram_indexed, fasta)
+        // Reports on cram TODO: fasta object to change in the future + this is also a subworkflow
+        SAMTOOLS_STATS_CRAM(cram_indexed, fasta.map{ fasta -> [ [ id:fasta.baseName ], fasta ] })
+        // TODO: cram_indexed can accept bed file at the end - not implemented yet. Empty ([]) for now.
+        MOSDEPTH(cram_indexed.map{meta, cram, crai -> [meta, cram, crai, []]}, fasta.map{ fasta -> [ [ id:fasta.baseName ], fasta ] })
 
         // Gather all reports generated
         qc_reports = qc_reports.mix(SAMTOOLS_STATS_CRAM.out.stats)

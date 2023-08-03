@@ -22,20 +22,11 @@ workflow SPLITNCIGAR {
             fasta_fai,
             fasta_dict
         )
-        bam_splitncigar = GATK4_SPLITNCIGARREADS.out.bam
-        ch_versions = ch_versions.mix(GATK4_SPLITNCIGARREADS.out.versions.first())
+        splitncigar_bam_bai = GATK4_SPLITNCIGARREADS.out.bam.join(GATK4_SPLITNCIGARREADS.out.bai, failOnDuplicate: true, failOnMismatch: true)
 
-        SAMTOOLS_INDEX (
-            bam_splitncigar
-        )
-        splitncigar_bam_bai = bam_splitncigar
-            .join(SAMTOOLS_INDEX.out.bai, by: [0], remainder: true)
-            .join(SAMTOOLS_INDEX.out.csi, by: [0], remainder: true)
-            .map{meta, bam, bai, csi ->
-                if (bai) [meta, bam, bai]
-                else [meta, bam, csi]
-            }
-        ch_versions = ch_versions.mix(SAMTOOLS_INDEX.out.versions.first())
+        ch_versions = ch_versions.mix(GATK4_SPLITNCIGARREADS.out.versions)
+
+
 
     emit:
         bam_bai     = splitncigar_bam_bai

@@ -18,10 +18,10 @@ workflow CRAM_QC {
     ch_versions = Channel.empty()
     qc_reports  = Channel.empty()
 
-    // Reports run on cram
-    SAMTOOLS_STATS(cram, fasta)
+    // Reports run on cram TODO:
+    SAMTOOLS_STATS(cram, fasta.map{ fasta -> [ [ id:fasta.baseName ], fasta ] })
     // TODO: cram_indexed can accept bed file at the end - not implemented yet
-    MOSDEPTH(cram, fasta)
+    MOSDEPTH(cram.map{meta, cram, crai -> [meta, cram, crai, []]}, fasta.map{ fasta -> [ [ id:fasta.baseName ], fasta ] })
 
     // Gather all reports generated
     qc_reports = qc_reports.mix(SAMTOOLS_STATS.out.stats)
@@ -30,10 +30,9 @@ workflow CRAM_QC {
 
     // Gather versions of all tools used
     ch_versions = ch_versions.mix(MOSDEPTH.out.versions)
-    ch_versions = ch_versions.mix(SAMTOOLS_STATS.out.versions.first())
+    ch_versions = ch_versions.mix(SAMTOOLS_STATS.out.versions)
 
     emit:
         qc       = qc_reports
-
         versions = ch_versions // channel: [ versions.yml ]
 }

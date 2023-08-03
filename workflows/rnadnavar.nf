@@ -203,6 +203,10 @@ workflow RNADNAVAR {
     ch_reports = ch_reports.mix(MAPPING.out.reports)
     ch_versions = ch_versions.mix(MAPPING.out.versions)
 
+    intervals_for_preprocessing = params.wes ?
+        intervals_bed_combined.map{it -> [ [ id:it.baseName ], it ]}.collect() :
+        Channel.value([ [ id:'null' ], [] ])
+
     // 5 MAIN STEPS: GATK PREPROCESING - VARIANT CALLING - NORMALIZATION - CONSENSUS - ANNOTATION
     CORE_RUN(
         params.step,
@@ -231,58 +235,58 @@ workflow RNADNAVAR {
     ch_reports = ch_reports.mix(CORE_RUN.out.reports)
     ch_versions = ch_versions.mix(CORE_RUN.out.versions)
 
-    if (params.tools.split(',').contains('second_run')) {
-        PREPARE_SECOND_RUN(ch_input_sample,           // input from CSV if applicable
-                            params.tools,
-                               CORE_RUN.out.maf,
-                               MAPPING.out.bwa_bams, // for dna re-alignments
-                               MAPPING.out.star_bams,  // for rnare-alignments
-                               fasta,
-                               fasta_fai,
-                               dict,
-                               PREPARE_REFERENCE_AND_INTERVALS.out.hisat2_index,
-                               PREPARE_REFERENCE_AND_INTERVALS.out.splicesites
-                               ) // do mapping with hisat2
-
-        ch_reports = ch_reports.mix(PREPARE_SECOND_RUN.out.reports)
-        ch_versions = ch_versions.mix(PREPARE_SECOND_RUN.out.versions)
-
-        SECOND_RUN(
-            "markduplicates",                      // step to start with
-            params.tools,
-            "baserecalibrator,baserecalibrator_report,contamination,learnreadorientation",
-            ch_input_sample,                       // input from CSV if applicable
-            PREPARE_SECOND_RUN.out.ch_bam_mapped, // input from mapping
-            fasta,                                 // fasta reference file
-            fasta_fai,                             // fai for fasta file
-            dict,                                    //
-            dbsnp,
-            dbsnp_tbi,
-            pon,
-            pon_tbi,
-            germline_resource,
-            germline_resource_tbi,
-            intervals,
-            intervals_for_preprocessing,
-            ch_interval_list_split,
-            intervals_bed_gz_tbi,
-            intervals_bed_combined,
-            CORE_RUN.out.vcf_consensus_dna,  // to repeat rescue consensus
-            CORE_RUN.out.vcfs_status_dna  // to repeat rescue consensus
-        )
-
-        ch_reports = ch_reports.mix(SECOND_RUN.out.reports)
-        ch_versions = ch_versions.mix(SECOND_RUN.out.versions)
-        second_run_maf = SECOND_RUN.out.maf_rna
-    } else{
-        second_run_maf = Channel.empty()
-    }
-
-    FILTERING_RNA(params.tools,
-                  CORE_RUN.out.maf_rna,
-                  second_run_maf,
-                  fasta)
-    ch_versions = ch_versions.mix(FILTERING_RNA.out.versions)
+//    if (params.tools.split(',').contains('second_run')) {
+//        PREPARE_SECOND_RUN(ch_input_sample,           // input from CSV if applicable
+//                            params.tools,
+//                               CORE_RUN.out.maf,
+//                               MAPPING.out.bwa_bams, // for dna re-alignments
+//                               MAPPING.out.star_bams,  // for rnare-alignments
+//                               fasta,
+//                               fasta_fai,
+//                               dict,
+//                               PREPARE_REFERENCE_AND_INTERVALS.out.hisat2_index,
+//                               PREPARE_REFERENCE_AND_INTERVALS.out.splicesites
+//                               ) // do mapping with hisat2
+//
+//        ch_reports = ch_reports.mix(PREPARE_SECOND_RUN.out.reports)
+//        ch_versions = ch_versions.mix(PREPARE_SECOND_RUN.out.versions)
+//
+//        SECOND_RUN(
+//            "markduplicates",                      // step to start with
+//            params.tools,
+//            "baserecalibrator,baserecalibrator_report,contamination,learnreadorientation",
+//            ch_input_sample,                       // input from CSV if applicable
+//            PREPARE_SECOND_RUN.out.ch_bam_mapped, // input from mapping
+//            fasta,                                 // fasta reference file
+//            fasta_fai,                             // fai for fasta file
+//            dict,                                    //
+//            dbsnp,
+//            dbsnp_tbi,
+//            pon,
+//            pon_tbi,
+//            germline_resource,
+//            germline_resource_tbi,
+//            intervals,
+//            intervals_for_preprocessing,
+//            ch_interval_list_split,
+//            intervals_bed_gz_tbi,
+//            intervals_bed_combined,
+//            CORE_RUN.out.vcf_consensus_dna,  // to repeat rescue consensus
+//            CORE_RUN.out.vcfs_status_dna  // to repeat rescue consensus
+//        )
+//
+//        ch_reports = ch_reports.mix(SECOND_RUN.out.reports)
+//        ch_versions = ch_versions.mix(SECOND_RUN.out.versions)
+//        second_run_maf = SECOND_RUN.out.maf_rna
+//    } else{
+//        second_run_maf = Channel.empty()
+//    }
+//
+//    FILTERING_RNA(params.tools,
+//                  CORE_RUN.out.maf_rna,
+//                  second_run_maf,
+//                  fasta)
+//    ch_versions = ch_versions.mix(FILTERING_RNA.out.versions)
 
 // REPORTING
 

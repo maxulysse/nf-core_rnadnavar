@@ -23,6 +23,7 @@ workflow BAM_MARKDUPLICATES {
 
     // Join with the crai file
     cram = GATK4_MARKDUPLICATES.out.cram.join(GATK4_MARKDUPLICATES.out.crai, failOnDuplicate: true, failOnMismatch: true)
+    bam  = GATK4_MARKDUPLICATES.out.bam.join(GATK4_MARKDUPLICATES.out.bai, failOnDuplicate: true, failOnMismatch: true)
 
     // QC on CRAM
     CRAM_QC_MOSDEPTH_SAMTOOLS(cram, fasta, intervals_bed_combined)
@@ -37,6 +38,7 @@ workflow BAM_MARKDUPLICATES {
 
     emit:
     cram
+    bam
     reports
 
     versions    // channel: [ versions.yml ]
