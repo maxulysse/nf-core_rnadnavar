@@ -179,9 +179,9 @@ workflow MAPPING {
                 bam:   it[0].data_type == "bam"
                 fastq: it[0].data_type == "fastq"
             }.set{ch_input_sample_type}
-            ch_bam_mapped = ch_input_sample_type.bam
+            bam_mapped = ch_input_sample_type.bam
 
-            ch_bam_mapped.branch{
+            bam_mapped.branch{
             rna:    it[0].status >= 2
             dna:    it[0].status < 2
             }.set{ch_input_sample_class}
