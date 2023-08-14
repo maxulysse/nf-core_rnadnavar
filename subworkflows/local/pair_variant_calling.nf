@@ -128,7 +128,7 @@ workflow PAIR_VARIANT_CALLING {
             strelka_vcf = Channel.empty().mix(RUN_STRELKA_SOMATIC.out.strelka_vcf)
             ch_versions = ch_versions.mix(RUN_STRELKA_SOMATIC.out.versions)
             }
-        if (tools.split(',').contains('strelka')) {
+        if (tools.split(',').contains('freebayes')) {
             // FREEBAYES
             RUN_FREEBAYES_SOMATIC(
                 cram_pair_intervals,

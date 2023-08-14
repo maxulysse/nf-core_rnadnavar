@@ -117,9 +117,14 @@ workflow MAPPING {
             // Grouping the bams from the same samples
             bwa_bams = GATK4_MAPPING.out.bam
             ch_bam_mapped_dna = GATK4_MAPPING.out.bam.map{ meta, bam ->
-                                [ groupKey( meta - meta.subMap('num_lanes', 'read_group', 'size') + [ data_type:'bam', id:meta.sample ], (meta.num_lanes ?: 1) * (meta.size ?: 1)), bam ]
-
-            }.groupTuple()
+                                // Update meta.id to be meta.sample, ditching sample-lane that is not needed anymore
+                                // Update meta.data_type
+                                // Remove no longer necessary fields:
+                                //   read_group: Now in the BAM header
+                                //    numLanes: only needed for mapping
+                                //         size: only needed for mapping
+                                [ groupKey( meta - meta.subMap('numLanes', 'read_group', 'size') + [ data_type:'bam', id:meta.sample ], (meta.numLanes ?: 1) * (meta.size ?: 1)), bam ]
+                                }.groupTuple()
 
 
             // RNA will be aligned with STAR
@@ -137,30 +142,23 @@ workflow MAPPING {
             // Grouping the bams from the same samples not to stall the workflow
             star_bams = ALIGN_STAR.out.bam.groupTuple(sort: true)
             ch_bam_mapped_rna = ALIGN_STAR.out.bam.map{ meta, bam ->
-                [ groupKey( meta - meta.subMap('num_lanes', 'read_group', 'size') + [ data_type:'bam', id:meta.sample ], (meta.num_lanes ?: 1) * (meta.size ?: 1)), bam ]
-            }.groupTuple()
+                                // Update meta.id to be meta.sample, ditching sample-lane that is not needed anymore
+                                // Update meta.data_type
+                                // Remove no longer necessary fields:
+                                //   read_group: Now in the BAM header
+                                //    numLanes: only needed for mapping
+                                //         size: only needed for mapping
+
+                                 [ groupKey( meta - meta.subMap('numLanes', 'read_group', 'size') + [ data_type:'bam', id:meta.sample ], (meta.numLanes ?: 1) * (meta.size ?: 1)), bam ]
+                                 }.groupTuple()
             // Gather QC reports
             ch_reports           = ch_reports.mix(ALIGN_STAR.out.stats.collect{it[1]}.ifEmpty([]))
             ch_reports           = ch_reports.mix(ALIGN_STAR.out.log_final.collect{it[1]}.ifEmpty([]))
             ch_versions          = ch_versions.mix(ALIGN_STAR.out.versions)
 
             // mix dna and rna in one channel
-            ch_bam_mapped = ch_bam_mapped_dna.mix(ch_bam_mapped_rna)
-            // Grouping the bams from the same samples not to stall the workflow
-            bam_mapped = ch_bam_mapped.map{ meta, bam ->
+            bam_mapped = ch_bam_mapped_dna.mix(ch_bam_mapped_rna)
 
-            // Update meta.id to be meta.sample, ditching sample-lane that is not needed anymore
-            // Update meta.data_type
-            // Remove no longer necessary fields:
-            //   read_group: Now in the BAM header
-            //    num_lanes: only needed for mapping
-            //         size: only needed for mapping
-
-            // Use groupKey to make sure that the correct group can advance as soon as it is complete
-            // and not stall the workflow until all reads from all channels are mapped
-            [ groupKey( meta - meta.subMap('num_lanes', 'read_group', 'size') + [ data_type:'bam', id:meta.sample ], (meta.num_lanes ?: 1) * (meta.size ?: 1)),
-            bam ]
-            }.groupTuple().map{meta, bam -> [meta, bam.flatten()]}
             // gatk4 markduplicates can handle multiple bams as input, so no need to merge/index here
             // Except if and only if skipping markduplicates or saving mapped bams
             if (params.save_bam_mapped || (params.skip_tools && params.skip_tools.split(',').contains('markduplicates'))) {
@@ -187,6 +185,7 @@ workflow MAPPING {
             }.set{ch_input_sample_class}
             star_bams = ch_input_sample_class.rna
             bwa_bams = ch_input_sample_class.dna
+            bam_mapped = bwa_bams.mix(star_bams)
         }
 
     emit:
